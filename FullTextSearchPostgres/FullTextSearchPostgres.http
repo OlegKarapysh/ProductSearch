@@ -1,6 +1,0 @@
-@FullTextSearchPostgres_HostAddress = http://localhost:5101
-
-GET {{FullTextSearchPostgres_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

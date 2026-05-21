@@ -8,39 +8,30 @@ namespace FullTextSearchPostgres.Benchmarks.Benchmarks;
 public class ProductSearchBenchmark
 {
     private AppDbContext _db = null!;
-
-    // [Params] runs the entire benchmark once per value so we can see
-    // whether performance differs between short and multi-word queries.
+    
     // "laptop"          — single common word, many matches expected
     // "wireless mouse"  — two-word phrase, narrower result set
     [Params("laptop", "wireless mouse")]
     public string Query { get; set; } = null!;
-
-    // [GlobalSetup] runs once before all iterations of a benchmark method.
-    // We create the DbContext here so its construction cost is not included
-    // in the measured timings.
+    
     [GlobalSetup]
     public void Setup()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost; Port=5432; Database=TestDB; Username=postgres; Password=admin")
-            // Disable EF Core's logging during benchmarks — console writes
-            // would add noise to the timing and allocation numbers.
             .UseLoggerFactory(Microsoft.Extensions.Logging.LoggerFactory.Create(_ => { }))
             .Options;
 
         _db = new AppDbContext(options);
 
-        // Open a dedicated connection upfront so that connection acquisition
-        // time is not counted inside each benchmark iteration.
-        // Both benchmarks share this same connection, so neither has an
-        // unfair advantage from connection pool differences.
+        // Open a dedicated connection upfront so that connection acquisition time is not counted inside each benchmark iteration.
+        // Both benchmarks share this same connection, so neither has an unfair advantage from connection pool differences.
         _db.Database.OpenConnection();
     }
 
     [GlobalCleanup]
     public void Cleanup() => _db.Dispose();
-
+    
     // --- BASELINE: naive LIKE search ---
     //
     // Contains() translates to:
@@ -60,6 +51,39 @@ public class ProductSearchBenchmark
             .Where(p => p.Name.Contains(Query) || p.Description.Contains(Query))
             .Take(50)
             .ToListAsync();
+    }
+    
+    [Benchmark]
+    public Task<List<Product>> SmartContains()
+    {
+        // Tokenize the query on whitespace, then require every token to appear
+        // somewhere in name or description. All tokens must match (AND across
+        // tokens), but they can occur in any order and any position.
+        //
+        // Example: query = "wireless mouse" generates SQL like:
+        //   WHERE (name ILIKE '%wireless%' OR description ILIKE '%wireless%')
+        //     AND (name ILIKE '%mouse%'    OR description ILIKE '%mouse%')
+        //
+        // This matches "wireless mouse", "wireless hp mouse",
+        // "my wireless hp lp mouse free", etc.
+        //
+        // Semantically this is now equivalent to plainto_tsquery (implicit AND
+        // between words), making the FTS comparison apples-to-apples.
+        //
+        // Each foreach iteration creates a new local 'pattern' variable, so each
+        // Where call captures its own value — EF Core parameterizes them separately.
+        var words = Query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        IQueryable<Product> query = _db.Products;
+        foreach (var word in words)
+        {
+            var pattern = $"%{word}%";
+            query = query.Where(p =>
+                EF.Functions.ILike(p.Name, pattern) ||
+                EF.Functions.ILike(p.Description, pattern));
+        }
+
+        return query.Take(50).ToListAsync();
     }
 
     // --- OPTIMIZED: full-text search ---

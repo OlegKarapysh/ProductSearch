@@ -16,7 +16,7 @@ public class Product
     //
     // A tsvector is NOT the original text — it is a pre-processed, indexed
     // representation of a text document. PostgreSQL converts raw text into
-    // a sorted list of "lexemes": normalised, stemmed word roots, each annotated
+    // a sorted list of "lexemes": normalized, stemmed word roots, each annotated
     // with its position(s) in the document and an optional weight (A/B/C/D).
     //
     // Example:
