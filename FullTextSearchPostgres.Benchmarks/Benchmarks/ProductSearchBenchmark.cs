@@ -13,21 +13,23 @@ public class ProductSearchBenchmark
 {
     private AppDbContext _db = null!;
     
-    private IProductSearchService _naive = null!;
-    private IProductSearchService _smart = null!;
-    private IProductSearchService _fts   = null!;
+    private IProductSearchService _naive      = null!;
+    private IProductSearchService _smart      = null!;
+    private IProductSearchService _fts        = null!;
+    private IProductSearchService _ftsFast    = null!;
+    private IProductSearchService _ftsRanked  = null!;
 
     // [Params] runs the entire benchmark suite once per value.
     //   "laptop"          — single common word
     //   "wireless mouse"  — two-word phrase, exposes the ORDER BY ts_rank cost
-    [Params("laptop", "wireless mouse")]
+    [Params("mouse", "ergonomic chair")]
     public string Query { get; set; } = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql("Host=localhost; Port=5432; Database=TestDB; Username=postgres; Password=admin")
+            .UseNpgsql("Host=localhost; Port=5433; Database=TestDB; Username=postgres; Password=admin")
             // Silence EF logging — console writes would add noise to the measurements.
             .UseLoggerFactory(LoggerFactory.Create(_ => { }))
             .Options;
@@ -37,9 +39,11 @@ public class ProductSearchBenchmark
         // Open the connection upfront so connection-acquisition time
         // is not counted inside the measured iterations.
         _db.Database.OpenConnection();
-        _naive = new NaiveProductSearchService(_db);
-        _smart = new SmartProductSearchService(_db);
-        _fts   = new FullTextProductSearchService(_db);
+        _naive     = new NaiveProductSearchService(_db);
+        _smart     = new SmartProductSearchService(_db);
+        _fts       = new FullTextProductSearchService(_db);
+        _ftsFast   = new FastFullTextProductSearchService(_db);
+        _ftsRanked = new RankedFastFullTextProductSearchService(_db);
     }
 
     [GlobalCleanup]
@@ -53,4 +57,10 @@ public class ProductSearchBenchmark
 
     [Benchmark]
     public Task<List<Product>> Fts() => _fts.SearchAsync(Query);
+
+    [Benchmark]
+    public Task<List<Product>> FtsFast() => _ftsFast.SearchAsync(Query);
+
+    [Benchmark]
+    public Task<List<Product>> FtsRanked() => _ftsRanked.SearchAsync(Query);
 }

@@ -10,6 +10,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddKeyedScoped<IProductSearchService, NaiveProductSearchService>("naive");
 builder.Services.AddKeyedScoped<IProductSearchService, SmartProductSearchService>("smart");
 builder.Services.AddKeyedScoped<IProductSearchService, FullTextProductSearchService>("fts");
+builder.Services.AddKeyedScoped<IProductSearchService, FastFullTextProductSearchService>("fts-fast");
+builder.Services.AddKeyedScoped<IProductSearchService, RankedFastFullTextProductSearchService>("fts-ranked");
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
@@ -37,6 +39,14 @@ app.MapGet("/products/smart",
 
 app.MapGet("/products/fts",
     async ([FromKeyedServices("fts")] IProductSearchService search, string query, CancellationToken ct) =>
+        Results.Ok(await search.SearchAsync(query, ct)));
+
+app.MapGet("/products/fts-fast",
+    async ([FromKeyedServices("fts-fast")] IProductSearchService search, string query, CancellationToken ct) =>
+        Results.Ok(await search.SearchAsync(query, ct)));
+
+app.MapGet("/products/fts-ranked",
+    async ([FromKeyedServices("fts-ranked")] IProductSearchService search, string query, CancellationToken ct) =>
         Results.Ok(await search.SearchAsync(query, ct)));
 
 app.Run();
